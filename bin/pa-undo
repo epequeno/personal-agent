@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""pa-undo — list and restore before-images captured by the reversibility extension.
+
+  pa-undo list [substr]      before-images, newest first, optionally filtered by path
+  pa-undo log  [substr]      mutation log records (journal/mutations.jsonl)
+  pa-undo restore <image>    copy a before-image back over its original path
+                             (the current contents are first saved as <path>.pa-undo-bak)
+
+Before-images live at $PA_DATA_DIR/undo/<date>/<abs path>@<HHMMSSmmm>.
+"""
+import json, os, re, shutil, sys
+from pathlib import Path
+
+DATA = Path(os.environ.get("PA_DATA_DIR", Path.home() / "personal-agent-data"))
+UNDO = DATA / "undo"
+IMG = re.compile(r"^(?P<path>.+)@(?P<stamp>\d{9})(\.\d+)?$")
+
+
+def images():
+    out = []
+    if not UNDO.is_dir():
+        return out
+    for day in sorted(UNDO.iterdir()):
+        for root, dirs, files in os.walk(day):
+            for name in files + dirs:
+                m = IMG.match(name)
+                if not m:
+                    continue
+                full = Path(root) / name
+                rel = full.relative_to(day)
+                orig = "/" + str(rel.parent / m.group("path")) if str(rel.parent) != "." else "/" + m.group("path")
+                out.append((day.name, m.group("stamp"), orig, full))
+    return sorted(out, key=lambda t: (t[0], t[1]), reverse=True)
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "list"
+    arg = argv[2] if len(argv) > 2 else ""
+    if cmd == "list":
+        for day, stamp, orig, full in images():
+            if arg in orig:
+                print(f"{day} {stamp}  {orig}\n    {full}")
+    elif cmd == "log":
+        f = DATA / "journal" / "mutations.jsonl"
+        for line in (f.read_text().splitlines() if f.exists() else []):
+            r = json.loads(line)
+            if arg in r.get("path", "") or arg in r.get("note", ""):
+                print(f"{r['ts']} {r['tool']:6} {r['path']} {(r.get('before') or '-')[:8]}->{(r.get('after') or '-')[:8]}"
+                      + (f"  [{r['note']}]" if r.get("note") else ""))
+    elif cmd == "restore":
+        if not arg:
+            sys.exit("usage: pa-undo restore <image>")
+        src = Path(arg).resolve()
+        if UNDO.resolve() not in src.parents:
+            sys.exit("not inside the undo directory")
+        day = src.relative_to(UNDO.resolve()).parts[0]
+        rel = src.relative_to(UNDO.resolve() / day)
+        m = IMG.match(rel.name)
+        if not m:
+            sys.exit("not a before-image name")
+        dest = Path("/") / rel.parent / m.group("path")
+        if dest.exists():
+            bak = Path(str(dest) + ".pa-undo-bak")
+            if dest.is_dir():
+                shutil.copytree(dest, bak, dirs_exist_ok=True)
+            else:
+                shutil.copy2(dest, bak)
+            print(f"current contents saved to {bak}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
+            shutil.copytree(src, dest)
+        else:
+            shutil.copy2(src, dest)
+        print(f"restored {dest}")
+    else:
+        sys.exit(__doc__)
+
+
+main(sys.argv)

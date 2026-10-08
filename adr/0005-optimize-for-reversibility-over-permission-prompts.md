@@ -75,6 +75,23 @@ The snapshots are cheap: the two vaults total approximately 5.4 MB.
   the journal and undo directories are currently unbounded.
 * Snapshotting is not a backup: it shares the same disk as the data it protects.
 
+## Updates
+
+### 2026-10-08 — M3 implementation and the bash gap
+
+Implemented in `agent/extensions/reversibility/`. The undo hook and mutation log never block
+a call. Two refinements to the decision above:
+
+* **Bash is partially covered, and the residual risk is accepted.** The extension tokenises
+  the command and, for `rm mv cp tee truncate sed -i perl -i` and `>`/`>>` redirects, saves
+  a before-image of each existing corpus path (files or whole directories, capped at 200 MB)
+  and logs it. It does not see `eval`, `xargs`, `find -delete`, unexpanded globs or
+  variables, or files written by a script the agent runs. Those are covered only by the daily
+  snapshots, and only for the two vaults. `~/code` has git, but uncommitted work in it is
+  exactly what a stray `rm` loses.
+* **`pa-undo`** (`list`, `log`, `restore`) is the reading side; restore saves the current
+  contents to `<path>.pa-undo-bak` first so a restore is itself undoable.
+
 ## Pros and Cons of the Options
 
 ### Reversibility layers
