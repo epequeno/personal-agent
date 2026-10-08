@@ -51,8 +51,10 @@ Two things a cold start must not assume, because both surprised us:
   earlier count included loose files and archives.
 - Only 16 roadmap files exist across `~/code` and the research vault, and none in the
   research vault — see the verified constraint in `docs/DESIGN.md` §5 and M2 below.
-- Five `~/code` repos have no commits at all (`legal-kit`, `personal-agent`,
-  `personal-site`, `pipeline-monitor`, `rag-eval-project`).
+- At M2, five `~/code` repos had no commits at all (`legal-kit`, `personal-agent`,
+  `personal-site`, `pipeline-monitor`, `rag-eval-project`). `personal-site` is now the
+  directory `~/code/pequeno.in`. As of 2026-10-08 only `pipeline-monitor` remains, and that
+  is deliberate — Steven does not want it committed.
 - `pi list` runs an agent turn rather than dispatching as a subcommand; the launcher now
   uses an explicit `--pi` escape hatch.
 - Sessions with an explicit `--session-dir` are stored flat, and daily ids are
@@ -120,6 +122,20 @@ Two things a cold start must not assume, because both surprised us:
 - [ ] Retention policy for `journal/` and `undo/`
 
 ## Open items
+
+- [ ] **Reversibility: `bash`-mediated corpus writes are journaled to the wrong path.** Found
+      2026-10-08 while publishing `legal-kit`. `bashTargets()` resolves relative paths against
+      the session cwd, not the `cd` target inside the command
+      (`agent/extensions/reversibility/core.ts:181`, via `expand()` at :52). So
+      `cd ~/code/legal-kit && patch -p1 …` records
+      `/Users/steven/code/personal-agent/docs/index.md` — a path that does not exist — instead of
+      `/Users/steven/code/legal-kit/docs/index.md`, and `before`/`after`/`undo` are all `null`.
+      Bare `VAR=value` tokens yield junk paths too (`…/personal-agent/=`). Consequence: for any
+      write outside the session cwd, the ADR-0005 guarantee silently does not hold, and M3's
+      "Verify: any corpus write is revertible from `undo/`" is true only for cwd-relative
+      writes. Fix: track the last `cd` target within the command, skip bare assignments, and
+      re-resolve relative paths against that directory. Until fixed, cross-directory corpus
+      edits need before-images captured by hand.
 
 - [x] **Push the repository to GitHub.** Published 2026-10-08 at
       https://github.com/epequeno/personal-agent (public, `origin`, branch `main`). The code

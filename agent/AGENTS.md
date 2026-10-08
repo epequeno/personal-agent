@@ -7,7 +7,7 @@ not the design. Design lives in `docs/DESIGN.md`; rationale in `adr/`.
 
 | Corpus | Path | Nature |
 |---|---|---|
-| Code | `~/code` | 45 directories, 33 of them git repos (56 entries in total, including loose files and archives). **Every** top-level directory counts as a project, repo or not. |
+| Code | `~/code` | 44 project directories, 33 of them version-controlled (re-derived from the atlas 2026-10-08; the root also holds loose files, a hidden `.claude/`, and two archives). **Every** top-level directory counts as a project, repo or not. |
 | Research | `~/Dropbox/eapsoftware-research` | Obsidian vault: 41 project directories plus `paper-watch/` (197 files). Not a git repo. |
 | Personal | `~/Dropbox/obsidian/Personal` | Obsidian vault of notes rather than projects. Not a git repo. |
 
@@ -36,11 +36,17 @@ project were untouched.
 
 ## Repos with no commits
 
-Five repositories have never been committed: `legal-kit`, `personal-site`, `pipeline-monitor`
-and `rag-eval-project` in `~/code`, plus `rag-architecture-eval` in the research vault.
-Nothing in them can be on a remote, so they are the highest-risk work in the corpora.
-`_Home.md` flags four of them (not `rag-architecture-eval`). `personal-agent` was on this
-list until M0 and is no longer. Re-derive from the atlas (`at-risk:no-commits`).
+One repository has never been committed: `pipeline-monitor` in `~/code` (7 uncommitted files).
+Steven decided on 2026-10-08 that it is **deliberately** uncommitted — he does not care whether it
+is lost — so it is an accepted risk rather than an oversight. Do not report it as an unattended
+problem; `_Home.md` § 7 records the same.
+
+Resolved at that date: `legal-kit` (first commit + public repo), `personal-site` → now
+`~/code/pequeno.in` (first commit + private repo, with the superseded 2022 `pequeno.in` archived
+locally as `~/code/pequeno.in-archive`), and `rag-eval-project` (first commit `ec83033`).
+`rag-architecture-eval`'s empty `.git` was deleted, so it is no longer a repository at all — it is
+a docs folder in the research vault, covered by Dropbox version history. `personal-agent` left this
+list at M0. Re-derive from the atlas (`at-risk:no-commits`).
 
 ## ADR namespaces
 

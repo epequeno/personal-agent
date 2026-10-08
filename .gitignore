@@ -25,6 +25,9 @@ agent/pi-fff/
 agent/pi-markdown-preview/
 agent/sessions/
 agent/cache/
+# A vendored arm64 `fd` binary (2.9 MB) that arrives with a package install — not
+# hand-written and arch-specific, so it is not committed either.
+agent/bin/
 
 # Local overrides and archives
 *.local.*
