@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+#
+# Refuse to commit anything resembling the agent's private state.
+#
+# Private state lives outside this repository by design (ADR-0003), so this hook
+# should never fire. It exists because the repository is public: a single mistake
+# is unrecoverable once published.
+#
+# Install:  cp hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+FORBIDDEN='^(data|sessions|memory|atlas|briefs|journal|undo|snapshots|outbox)(/|$)|^agent/auth\.json$|\.local\.(json|md|ya?ml)$|\.bundle$'
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+
+bad=$(printf '%s\n' "$staged" | grep -E "$FORBIDDEN" || true)
+
+if [ -n "$bad" ]; then
+  echo "pre-commit: refusing to commit paths that must stay private:" >&2
+  printf '  %s\n' $bad >&2
+  echo >&2
+  echo "Private agent state belongs in \$PA_DATA_DIR (default ~/personal-agent-data)." >&2
+  echo "If this is a false positive, adjust .gitignore and hooks/pre-commit together." >&2
+  exit 1
+fi
+
+exit 0

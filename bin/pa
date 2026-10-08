@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+#
+# pa — personal-agent launcher
+#
+# Wires the isolated pi agent directory to the private data directory, pins the
+# daily session model, and defaults the working directory to the agent's home.
+#
+#   pa                  home context, today's session
+#   pa --here           keep the current directory (project-scoped session)
+#   pa -c               continue the most recent session instead of today's
+#   pa -p "/brief"      non-interactive run (scheduled briefings)
+#   pa --pi <args>      pass <args> straight to pi; bypasses the session and cwd policy
+#
+# See docs/DESIGN.md and adr/0002, adr/0003, adr/0004.
+
+set -euo pipefail
+
+PA_HOME="${PA_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+PA_DATA_DIR="${PA_DATA_DIR:-$HOME/personal-agent-data}"
+
+export PI_CODING_AGENT_DIR="$PA_HOME/agent"
+export PI_CODING_AGENT_SESSION_DIR="$PA_DATA_DIR/sessions"
+
+# Flags that must reach pi untouched, without the mkdir/cd prologue.
+case "${1:-}" in
+  --help|-h|--version|-v)
+    exec pi "$@"
+    ;;
+  # Escape hatch for pi's own subcommands (`config`, `auth`, `mcp`, `update`, ...).
+  # They are NOT in the pass-through list above because pi does not reliably
+  # distinguish a subcommand from a prompt: bare `pi list` was observed running an
+  # agent turn with "list" as the message, which invokes a model. Use `pa --pi ...`
+  # explicitly so the intent is never guessed.
+  --pi)
+    shift
+    exec pi "$@"
+    ;;
+esac
+
+# Private state skeleton. Created on demand so a fresh clone works immediately.
+mkdir -p \
+  "$PA_DATA_DIR/sessions" \
+  "$PA_DATA_DIR/memory" \
+  "$PA_DATA_DIR/atlas" \
+  "$PA_DATA_DIR/briefs" \
+  "$PA_DATA_DIR/journal" \
+  "$PA_DATA_DIR/undo" \
+  "$PA_DATA_DIR/snapshots" \
+  "$PA_DATA_DIR/outbox"
+
+# Working directory policy: home by default, --here to stay put.
+if [ "${1:-}" = "--here" ]; then
+  shift
+else
+  cd "$PA_HOME"
+fi
+
+# Daily session model: pa-YYYY-MM-DD, created if absent, resumed if present.
+# Skipped when the caller selects a session explicitly, because pi rejects
+# --session-id combined with --continue/--resume/--session/--fork.
+explicit_session=""
+for arg in "$@"; do
+  case "$arg" in
+    -c|--continue|-r|--resume|--session|--session=*|--session-id|--session-id=*|--fork|--fork=*|--no-session)
+      explicit_session=1
+      ;;
+  esac
+done
+
+if [ -n "$explicit_session" ]; then
+  exec pi "$@"
+else
+  exec pi --session-id "pa-$(date +%F)" "$@"
+fi

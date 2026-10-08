@@ -1,0 +1,35 @@
+# The agent's private state lives OUTSIDE this repository (ADR-0003), at
+# $PA_DATA_DIR (default ~/personal-agent-data). These rules are defense in depth:
+# they should never need to match anything. See hooks/pre-commit for the real gate.
+
+data/
+sessions/
+memory/
+atlas/
+briefs/
+journal/
+undo/
+snapshots/
+outbox/
+
+# Credentials must never be committed. auth.json resolves inside the agent
+# directory, which is this repo (ADR-0002).
+agent/auth.json
+
+# pi writes runtime state into the agent directory: installed packages, a model
+# catalog cache, and package databases. Only the hand-written files in agent/ are
+# committed. Adding a package means adding its state directory here (ADR-0002).
+agent/npm/
+agent/models-store.json
+agent/pi-fff/
+agent/pi-markdown-preview/
+agent/sessions/
+agent/cache/
+
+# Local overrides and archives
+*.local.*
+*.local.json
+*.bundle
+
+# OS noise
+.DS_Store

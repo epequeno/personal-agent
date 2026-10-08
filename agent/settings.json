@@ -1,0 +1,17 @@
+{
+  "defaultProvider": "openrouter",
+  "defaultModel": "deepseek/deepseek-v4.1-flash",
+  "defaultThinkingLevel": "medium",
+  "theme": "dark",
+  "quietStartup": "header",
+  "defaultTools": ["read", "grep", "find", "ls", "bash", "edit", "write"],
+  "packages": ["npm:pi-fff", "npm:pi-markdown-preview"],
+  "extensions": [
+    "~/.pi/agent/extensions/roadmap.ts",
+    "~/.pi/agent/extensions/subagent",
+    "~/.pi/agent/extensions/vision-bridge.ts",
+    "~/.pi/agent/extensions/openrouter-service-tier.ts",
+    "~/.pi/agent/extensions/proceed-shortcut.ts"
+  ],
+  "skills": ["~/.agents/skills"]
+}

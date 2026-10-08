@@ -1,0 +1,89 @@
+# personal-agent — Roadmap
+
+> Format is the checkbox syntax parsed by `~/.pi/agent/extensions/roadmap.ts`.
+> `##` / `###` headings are treated as phases. See `docs/DESIGN.md` for the decision
+> record behind these milestones.
+
+## M0 — Skeleton — **complete**
+
+- [x] `bin/pa` launcher: `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, home-by-default cwd, `--here` passthrough, `--session-id pa-YYYY-MM-DD`, `--pi` escape hatch
+- [x] `agent/settings.json`: model, `defaultTools`, `packages` (`pi-fff`, `pi-markdown-preview`), resource paths for core extensions and skills
+- [x] `agent/APPEND_SYSTEM.md`: agent identity and operating rules
+- [x] `agent/AGENTS.md`: corpus paths, definition of a project, conventions, output formats
+- [x] `.gitignore` and `hooks/pre-commit` failing on any staged private path
+- [x] Resolve `auth.json`: symlinked to `~/.pi/agent/auth.json` and gitignored
+- [x] `tests/test-launcher.sh` covering the launcher's acceptance criteria with a stub `pi`
+- [x] Adopt the ADR convention: `adr/README.md`, `adr/template.md`, `adr/0001-record-architecture-decisions.md`
+- [x] Backfill ADRs 0002–0014 from `docs/DESIGN.md`
+- [x] Corpus conventions in `agent/AGENTS.md`: all of `~/code` counts as a project; `_Home.md` is the priority hub, not ground truth; qualify ADR references by project namespace
+- [x] Verify: `pa` launches isolated from any cwd; `pa --here` respects cwd; 11/11 launcher tests pass
+- [ ] Port the upstream ADR skill into `agent/skills/adr/` so the agent can draft ADRs itself (ADR-0014)
+
+### Findings during M0 that changed the design
+
+- `~/code` holds 45 directories and 33 git repos, not the ~58/35 originally assumed; the
+  earlier count included loose files and archives.
+- Only 16 roadmap files exist across `~/code` and the research vault, and none in the
+  research vault — see the verified constraint in `docs/DESIGN.md` §5 and M2 below.
+- Five `~/code` repos have no commits at all (`legal-kit`, `personal-agent`,
+  `personal-site`, `pipeline-monitor`, `rag-eval-project`).
+- `pi list` runs an agent turn rather than dispatching as a subcommand; the launcher now
+  uses an explicit `--pi` escape hatch.
+- Sessions with an explicit `--session-dir` are stored flat, and daily ids are
+  project-scoped — resolve a session by id **and** cwd.
+
+## M1 — Memory
+
+- [ ] `memory` tool: add / replace / remove over `MEMORY.md` and `USER.md`
+- [ ] `§`-delimited entries with hard character ceilings (memory ≈2200, user ≈1375)
+- [ ] Atomic writes (temp file + rename)
+- [ ] Prompt injection via `before_agent_start` with a frozen per-session snapshot
+- [ ] `/remember` prompt template
+- [ ] `session_end` hook: cycle summary to `journal/YYYY-MM-DD.md` + proposed facts
+- [ ] Verify: a fact from session A appears in session B; mid-session writes do not shift the prompt prefix
+
+## M2 — World model
+
+- [ ] `pa-atlas` deterministic script walking the three corpora
+- [ ] Per-project cards in `atlas/<slug>.md`: last activity, git state, open TODOs, note links, size — with roadmap next items only where a roadmap exists (rare: 16 files across `~/code` and the research vault, none in the vault)
+- [ ] Derive status from git state, timestamps, and TODOs rather than from status documents
+- [ ] Flag the five repos with no commits as at-risk
+- [ ] `atlas/index.md` roll-up with flags for stale / blocked / recently active
+- [ ] `/brief` prompt template producing a prioritized, actionable brief
+- [ ] `docs/examples/` with hand-picked sanitized briefs for the public demo
+- [ ] Verify: every project in the three corpora appears in the index; `/brief` needs no LLM indexing pass; a stale claim in `_Home.md` is caught and reported, not repeated
+
+## M3 — Reversibility
+
+- [ ] `tool_call` hook: before-image of every corpus file written or edited → `undo/<date>/<relpath>`
+- [ ] Daily `tar` snapshots of both Obsidian vaults; retention 14 daily + 8 weekly
+- [ ] `journal/mutations.jsonl`: timestamp, tool, path, before-hash, after-hash, session id
+- [ ] Outbox: multi-file edits, deletions, or changes touching more than N files write a plan + diff to `outbox/` and ask once before applying
+- [ ] Close the uncovered mutation path: `bash`-mediated edits (`sed -i`, `mv`, `rm`, redirection) bypass the `tool_call` hook — either add a bash guard or accept the risk explicitly (ADR-0005)
+- [ ] Verify: any corpus write is revertible from `undo/`; every mutation is in the audit trail
+
+## M4 — Proactive
+
+- [ ] launchd (or cron) job running `pa --print "/brief"`
+- [ ] Briefs written to `briefs/YYYY-MM-DD.md`
+- [ ] Unread-brief surfacing at next interactive launch
+- [ ] Verify: a brief appears unattended and is reported at next launch
+
+## M5 — Optional escalations
+
+- [ ] Loadout extension: register project-specific extensions as `deferred`/`codemode`, activate by cwd
+- [ ] SQLite FTS5 index over the corpora — only if grep measurably falls short
+- [ ] agentmemory MCP integration — only if hybrid retrieval is actually needed
+- [ ] `--redact` mode on the brief writer for public demo output
+- [ ] Retention policy for `journal/` and `undo/`
+
+## Open items
+
+- [ ] Retention/rotation policy for `journal/` and `undo/`
+- [ ] `--redact` mode on the brief writer for public demo output
+
+## Triggers (revisit when)
+
+- [ ] Backup — when `$PA_DATA_DIR` has a populated `memory/` and more than a few weeks of `journal/` (ADR-0013)
+- [ ] Retrieval escalation to FTS5 or agentmemory — only if the atlas plus grep measurably falls short (ADR-0007)
+- [ ] Loadout extension — once the core extension set has been used enough to revise it (ADR-0010)
