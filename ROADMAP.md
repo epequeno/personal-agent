@@ -16,7 +16,8 @@ To pick this up cold, in order:
 4. Verify before extending:
    - `bash tests/test-launcher.sh` — 11 assertions, no model calls, free to run
    - `bash tests/test-memory.sh` — 11 assertions, 4 model calls, throwaway `PA_DATA_DIR`
-5. Start M2.
+   - `bash tests/test-atlas.sh` — 12 assertions, fixture corpora, no model calls
+5. Continue M2: atlas done; the brief format decision and `/brief` remain.
 
 Two things a cold start must not assume, because both surprised us:
 
@@ -84,11 +85,11 @@ Two things a cold start must not assume, because both surprised us:
 
 ## M2 — World model
 
-- [ ] `pa-atlas` deterministic script walking the three corpora
-- [ ] Per-project cards in `atlas/<slug>.md`: last activity, git state, open TODOs, note links, size — with roadmap next items only where a roadmap exists (rare: 16 files across `~/code` and the research vault, none in the vault)
-- [ ] Derive status from git state, timestamps, and TODOs rather than from status documents
-- [ ] Flag the five repos with no commits as at-risk
-- [ ] `atlas/index.md` roll-up with flags for stale / blocked / recently active
+- [x] `pa-atlas` deterministic script walking the three corpora
+- [x] Per-project cards in `atlas/<slug>.md`: last activity, git state, open TODOs, note links, size — with roadmap next items only where a roadmap exists (rare: 16 files across `~/code` and the research vault, none in the vault)
+- [x] Derive status from git state, timestamps, and TODOs rather than from status documents
+- [x] Flag the five repos with no commits as at-risk
+- [x] `atlas/index.md` roll-up with flags for stale / blocked / recently active
 - [ ] `/brief` prompt template producing a prioritized, actionable brief
 - [ ] `docs/examples/` with hand-picked sanitized briefs for the public demo
 - [ ] Verify: every project in the three corpora appears in the index; `/brief` needs no LLM indexing pass; a stale claim in `_Home.md` is caught and reported, not repeated

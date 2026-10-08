@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""pa-atlas — deterministic, LLM-free atlas generator.
+
+Walks the three corpora and writes, under $PA_DATA_DIR/atlas/:
+  index.md    one line per project, with flags
+  <slug>.md   one card per project
+
+Status is derived from git state, timestamps and TODOs, never from status documents
+(docs/DESIGN.md section 5). Stdlib only. Corpus paths are overridable for tests:
+PA_CODE_DIR, PA_RESEARCH_DIR, PA_PERSONAL_DIR, PA_HOME_NOTE.
+
+Usage: pa-atlas [--out DIR] [--stale-days N] [--recent-days N] [--now EPOCH]
+"""
+import argparse, os, re, subprocess, sys, time
+from datetime import datetime
+from pathlib import Path
+
+HOME = Path.home()
+CORPORA = [
+    ("code", Path(os.environ.get("PA_CODE_DIR", HOME / "code"))),
+    ("research", Path(os.environ.get("PA_RESEARCH_DIR", HOME / "Dropbox/eapsoftware-research"))),
+    ("personal", Path(os.environ.get("PA_PERSONAL_DIR", HOME / "Dropbox/obsidian/Personal"))),
+]
+HOME_NOTE = Path(os.environ.get("PA_HOME_NOTE", CORPORA[1][1] / "_Home.md"))
+SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "target", "dist", "build",
+             ".next", ".obsidian", ".terraform", ".cache", ".pytest_cache", ".DS_Store",
+             "_archive", "archive", "vendor", "elm-stuff", "coverage"}
+TEXT_EXT = {".md", ".py", ".ts", ".tsx", ".js", ".jsx", ".sh", ".go", ".rs", ".elm", ".sql",
+            ".yml", ".yaml", ".toml", ".c", ".h", ".cpp", ".ino", ".txt", ".tf"}
+MAX_FILES = 20000          # walk cap per project; flagged when hit
+MAX_TODO_BYTES = 400_000   # skip bigger files for TODO scan
+TODO_RE = re.compile(r"\b(TODO|FIXME|XXX)\b[:\s]*(.*)")
+CHECKBOX_RE = re.compile(r"^\s*[-*]\s+\[ \]\s+(.*)")
+BLOCKED_RE = re.compile(r"\b(blocked|waiting on|waiting for)\b", re.I)
+
+
+def git(path, *args):
+    try:
+        r = subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True, timeout=30)
+    except Exception:
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def slugify(s):
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-") or "unnamed"
+
+
+def walk(project):
+    """Yield (path, stat) for files, skipping noise; honours MAX_FILES."""
+    n = 0
+    for root, dirs, files in os.walk(project):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for f in sorted(files):
+            p = Path(root) / f
+            try:
+                st = p.lstat()
+            except OSError:
+                continue
+            yield p, st
+            n += 1
+            if n >= MAX_FILES:
+                return
+
+
+def scan(project):
+    info = dict(files=0, size=0, mtime=0.0, newest="", todos=[], checks=[], roadmaps=[], capped=False)
+    for p, st in walk(project):
+        info["files"] += 1
+        info["size"] += st.st_size
+        if st.st_mtime > info["mtime"]:
+            info["mtime"], info["newest"] = st.st_mtime, str(p.relative_to(project))
+        if p.suffix.lower() in TEXT_EXT or p.name.lower().startswith("roadmap"):
+            if st.st_size > MAX_TODO_BYTES:
+                continue
+            try:
+                lines = p.read_text(errors="ignore").splitlines()
+            except OSError:
+                continue
+            rel = str(p.relative_to(project))
+            is_roadmap = p.suffix.lower() == ".md" and "roadmap" in p.name.lower()
+            if not is_roadmap and any(len(l) > 400 for l in lines):    # minified / generated
+                continue
+            if is_roadmap:
+                info["roadmaps"].append(rel)
+            for i, line in enumerate(lines, 1):
+                m = TODO_RE.search(line)
+                if m and p.suffix.lower() != ".md" or (m and line.lstrip().startswith(("-", "*", "TODO", "#"))):
+                    info["todos"].append((rel, i, line.strip()[:140]))
+                c = CHECKBOX_RE.match(line)
+                if c and p.suffix.lower() == ".md":
+                    info["checks"].append((rel, i, c.group(1).strip()[:140], is_roadmap))
+    info["checks"].sort(key=lambda c: not c[3])     # roadmap items first (stable)
+    info["capped"] = info["files"] >= MAX_FILES
+    return info
+
+
+def git_state(project):
+    if not (project / ".git").exists():
+        return None
+    g = dict(branch=git(project, "symbolic-ref", "--short", "HEAD") or "(detached)")
+    head = git(project, "rev-parse", "--verify", "-q", "HEAD")
+    g["commits"] = int(git(project, "rev-list", "--count", "HEAD") or 0) if head else 0
+    g["last_commit"] = int(git(project, "log", "-1", "--format=%ct") or 0) if head else 0
+    g["last_subject"] = (git(project, "log", "-1", "--format=%s") or "") if head else ""
+    status = git(project, "status", "--porcelain") or ""
+    g["dirty"] = len([l for l in status.splitlines() if l.strip()])
+    g["remotes"] = (git(project, "remote") or "").split()
+    ahead = git(project, "rev-list", "--count", "@{u}..HEAD") if head else None
+    g["unpushed"] = int(ahead) if ahead and ahead.isdigit() else None   # None: no upstream
+    return g
+
+
+def human_size(n):
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024 or u == "GB":
+            return f"{n:.0f} {u}" if u == "B" else f"{n:.1f} {u}"
+        n /= 1024
+
+
+def day(ts):
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else "never"
+
+
+def build(corpus, root, home_text, now, stale_s, recent_s):
+    projects = []
+    if not root.is_dir():
+        return projects
+    for entry in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not entry.is_dir() or entry.name.startswith((".", "_")) or entry.name in SKIP_DIRS:
+            continue
+        s = scan(entry)
+        g = git_state(entry)
+        last = max(s["mtime"], g["last_commit"] if g else 0)
+        flags = []
+        if g is not None:
+            if g["commits"] == 0:
+                flags.append("at-risk:no-commits")
+            else:
+                if not g["remotes"]:
+                    flags.append("at-risk:no-remote")
+                elif g["unpushed"]:
+                    flags.append("unpushed")
+            if g["dirty"]:
+                flags.append("dirty")
+        elif corpus == "code":
+            flags.append("not-a-repo")
+        if last and now - last > stale_s:
+            flags.append("stale")
+        elif last and now - last <= recent_s:
+            flags.append("recent")
+        if any(BLOCKED_RE.search(t[2]) for t in s["todos"]) or any(BLOCKED_RE.search(c[2]) for c in s["checks"]):
+            flags.append("blocked?")
+        if corpus == "code" and home_text and entry.name.lower() not in home_text:
+            flags.append("not-in-home")
+        if s["capped"]:
+            flags.append("walk-capped")
+        projects.append(dict(name=entry.name, slug=f"{corpus}--{slugify(entry.name)}", corpus=corpus,
+                             path=entry, scan=s, git=g, last=last, flags=flags,
+                             open_items=len(s["checks"]) + len(s["todos"])))
+    return projects
+
+
+def card(p, now):
+    s, g = p["scan"], p["git"]
+    out = [f"# {p['name']}", "", f"- corpus: {p['corpus']}", f"- path: `{p['path']}`",
+           f"- last activity: {day(p['last'])}" + (f" (`{s['newest']}`)" if s["newest"] else ""),
+           f"- flags: {', '.join(p['flags']) or 'none'}",
+           f"- size: {s['files']} files, {human_size(s['size'])}" + (" (walk capped)" if s["capped"] else "")]
+    out += ["", "## Git", ""]
+    if g is None:
+        out.append("Not a git repository." if p["corpus"] == "code" else "Not version-controlled (vault; Dropbox history only).")
+    else:
+        out += [f"- branch: {g['branch']}, commits: {g['commits']}",
+                f"- last commit: {day(g['last_commit'])}" + (f" — {g['last_subject']}" if g["last_subject"] else ""),
+                f"- uncommitted paths: {g['dirty']}",
+                f"- remotes: {', '.join(g['remotes']) or 'none'}",
+                "- unpushed commits: " + ("no upstream" if g["unpushed"] is None else str(g["unpushed"]))]
+    out += ["", "## Roadmap", ""]
+    if s["roadmaps"]:
+        out.append("Files: " + ", ".join(f"`{r}`" for r in s["roadmaps"][:5]))
+        nxt = [c for c in s["checks"] if c[3]][:5]
+        out += [f"- next: {c[2]} (`{c[0]}:{c[1]}`)" for c in nxt] or ["- no unchecked items"]
+    else:
+        out.append("None.")
+    out += ["", f"## Open items ({p['open_items']})", ""]
+    shown = [f"- [ ] {c[2]} (`{c[0]}:{c[1]}`)" for c in s["checks"][:10]]
+    shown += [f"- TODO {t[2]} (`{t[0]}:{t[1]}`)" for t in s["todos"][:10]]
+    out += shown or ["None found."]
+    if p["open_items"] > len(shown):
+        out.append(f"- … {p['open_items'] - len(shown)} more")
+    return "\n".join(out) + "\n"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=str(Path(os.environ.get("PA_DATA_DIR", HOME / "personal-agent-data")) / "atlas"))
+    ap.add_argument("--stale-days", type=int, default=60)
+    ap.add_argument("--recent-days", type=int, default=7)
+    ap.add_argument("--now", type=float, default=time.time())
+    a = ap.parse_args()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    home_text = HOME_NOTE.read_text(errors="ignore").lower() if HOME_NOTE.is_file() else ""
+
+    projects = []
+    for corpus, root in CORPORA:
+        projects += build(corpus, root, home_text, a.now, a.stale_days * 86400, a.recent_days * 86400)
+
+    for old in out.glob("*.md"):
+        old.unlink()
+    for p in projects:
+        (out / f"{p['slug']}.md").write_text(card(p, a.now))
+
+    def key(p):
+        risk = any(f.startswith("at-risk") for f in p["flags"])
+        return (not risk, -p["last"], p["name"].lower())
+    lines = [f"# Atlas — generated {datetime.fromtimestamp(a.now):%Y-%m-%d %H:%M}", "",
+             f"{len(projects)} projects. Flags: at-risk first, then most recently active.", "",
+             "| project | corpus | last activity | open | flags |", "|---|---|---|---|---|"]
+    for p in sorted(projects, key=key):
+        lines.append(f"| [{p['name']}]({p['slug']}.md) | {p['corpus']} | {day(p['last'])} | "
+                     f"{p['open_items']} | {', '.join(p['flags'])} |")
+    (out / "index.md").write_text("\n".join(lines) + "\n")
+    print(f"wrote {len(projects)} cards + index.md to {out}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
