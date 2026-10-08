@@ -119,13 +119,15 @@ Two things a cold start must not assume, because both surprised us:
 
 ## Open items
 
-- [ ] **Push the repository to GitHub.** The repo has no remote and exists only on this
-      disk, and there is no Time Machine destination either. ADR-0008 assumes GitHub is the
-      offsite copy, but the remote was never created. This is the largest risk to the
-      project's continuity — larger than anything in M2–M5.
+- [x] **Push the repository to GitHub.** Published 2026-10-08 at
+      https://github.com/epequeno/personal-agent (public, `origin`, branch `main`). The code
+      and docs now have an offsite copy, so ADR-0008's argument holds for this repository.
+      Note this does **not** cover `$PA_DATA_DIR`, which remains outside the repo with no
+      backup of its own — see the trigger below.
 - [ ] Retention/rotation policy for `journal/` and `undo/`
 - [ ] `--redact` mode on the brief writer for public demo output
 - [ ] Port the upstream ADR skill into `agent/skills/adr/` (ADR-0014)
+- [ ] Add repository topics/description polish, if the repo is meant to be found
 
 ## Pending decisions
 
