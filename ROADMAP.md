@@ -17,7 +17,7 @@ To pick this up cold, in order:
    - `bash tests/test-launcher.sh` — 11 assertions, no model calls, free to run
    - `bash tests/test-memory.sh` — 11 assertions, 4 model calls, throwaway `PA_DATA_DIR`
    - `bash tests/test-atlas.sh` — 12 assertions, fixture corpora, no model calls
-5. Continue M2: atlas done; the brief format decision and `/brief` remain.
+5. Continue M2: atlas and `/brief` done; `docs/examples/` and the final verify remain.
 
 Two things a cold start must not assume, because both surprised us:
 
@@ -90,7 +90,7 @@ Two things a cold start must not assume, because both surprised us:
 - [x] Derive status from git state, timestamps, and TODOs rather than from status documents
 - [x] Flag the five repos with no commits as at-risk
 - [x] `atlas/index.md` roll-up with flags for stale / blocked / recently active
-- [ ] `/brief` prompt template producing a prioritized, actionable brief
+- [x] `/brief` prompt template producing a prioritized, actionable brief
 - [ ] `docs/examples/` with hand-picked sanitized briefs for the public demo
 - [ ] Verify: every project in the three corpora appears in the index; `/brief` needs no LLM indexing pass; a stale claim in `_Home.md` is caught and reported, not repeated
 
@@ -134,7 +134,8 @@ Two things a cold start must not assume, because both surprised us:
 
 Recorded here so they do not survive only in conversation.
 
-- [ ] **What should the brief contain?** Blocks the second half of M2. `agent/AGENTS.md`
+- [x] **What should the brief contain?** Settled provisionally 2026-10-08: the four sections
+      below, with rules in `agent/prompts/brief.md`. Revise after a week of real use. Was: `agent/AGENTS.md`
       holds a provisional shape (`Now` / `At risk` / `Divergence` / `Quiet`), but the
       generator is only as useful as the format, so settle the format first.
 
