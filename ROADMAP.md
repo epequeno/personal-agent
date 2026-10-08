@@ -4,6 +4,30 @@
 > `##` / `###` headings are treated as phases. See `docs/DESIGN.md` for the decision
 > record behind these milestones.
 
+## Resuming work
+
+**State: M0 and M1 are complete. Next is M2.**
+
+To pick this up cold, in order:
+
+1. `docs/DESIGN.md` — what the design is.
+2. `adr/README.md` — why, and what was rejected. Short: 14 records, one decision each.
+3. The completed milestones below, including their "findings that changed the design".
+4. Verify before extending:
+   - `bash tests/test-launcher.sh` — 11 assertions, no model calls, free to run
+   - `bash tests/test-memory.sh` — 11 assertions, 4 model calls, throwaway `PA_DATA_DIR`
+5. Start M2.
+
+Two things a cold start must not assume, because both surprised us:
+
+- **Status documents barely exist.** There are 16 roadmap files across `~/code` and the
+  research vault, covering roughly 10 projects, and none in the research vault. Agent
+  status is derived from git state and timestamps, not read from a status document. See
+  `docs/DESIGN.md` §5.
+- **The agent directory is partly generated.** `pi` writes `agent/npm/` (44 MB of
+  `node_modules`), `agent/models-store.json`, and `agent/pi-fff/` into it. These are
+  gitignored, and adding a package means adding an ignore rule. See ADR-0002 → Updates.
+
 ## M0 — Skeleton — **complete**
 
 - [x] `bin/pa` launcher: `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, home-by-default cwd, `--here` passthrough, `--session-id pa-YYYY-MM-DD`, `--pi` escape hatch
@@ -95,8 +119,21 @@
 
 ## Open items
 
+- [ ] **Push the repository to GitHub.** The repo has no remote and exists only on this
+      disk, and there is no Time Machine destination either. ADR-0008 assumes GitHub is the
+      offsite copy, but the remote was never created. This is the largest risk to the
+      project's continuity — larger than anything in M2–M5.
 - [ ] Retention/rotation policy for `journal/` and `undo/`
 - [ ] `--redact` mode on the brief writer for public demo output
+- [ ] Port the upstream ADR skill into `agent/skills/adr/` (ADR-0014)
+
+## Pending decisions
+
+Recorded here so they do not survive only in conversation.
+
+- [ ] **What should the brief contain?** Blocks the second half of M2. `agent/AGENTS.md`
+      holds a provisional shape (`Now` / `At risk` / `Divergence` / `Quiet`), but the
+      generator is only as useful as the format, so settle the format first.
 
 ## Triggers (revisit when)
 
