@@ -134,3 +134,28 @@ durable facts for confirmation.
 * `Dropbox/eapsoftware-research/persistent-memory-systems-research.md` — prior survey of Hermes, agentmemory, MemGPT
 * [ADR-0004](./0004-use-daily-sessions.md) — why this tier is load-bearing
 * M5 in `ROADMAP.md` — the escalation path if this proves insufficient
+
+---
+
+## Updates
+
+* 2026-10-08 — Implemented in M1 with three deliberate departures from the text above,
+  recorded because they are behavioural, not cosmetic:
+
+  1. **The journal is mechanical, not an LLM-written cycle summary.** It records time,
+     session id, shutdown reason, prompt count, model, cwd, whether memory was written,
+     and truncated prompt excerpts. An LLM summary would cost a model call on every exit,
+     which is a cost that reliably leads to the journal being disabled.
+  2. **Fact proposals are a notification, not an extraction.** If a session wrote nothing
+     to memory after three or more prompts, the user is nudged toward `/remember`. The
+     decision above rejected automatic capture on the grounds that extraction is the least
+     trustworthy part of every surveyed system, so the implementation refuses to extract at
+     all rather than extracting carefully.
+  3. **A `list` action was added** to the tool, beyond the add/replace/remove in the
+     decision. Without it, consolidation is guesswork: the agent cannot see what it is
+     about to replace or remove.
+
+  Also added: `PA_MEMORY_TRACE=<path>`, which appends the exact injected memory section per
+  turn. It exists because the frozen-snapshot property is otherwise untestable — a model
+  answering from the transcript appears to "remember" a mid-session write regardless of
+  injection, so the trace is what actually verifies the property.

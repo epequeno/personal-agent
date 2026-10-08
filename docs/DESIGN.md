@@ -260,11 +260,19 @@ rename, and substring matching for replace/remove.
 
 ### 6.2 Journaling
 
-- `session_end` hook → append a cycle summary to
-  `$PA_DATA_DIR/journal/YYYY-MM-DD.md`, and **propose** 0–3 durable facts for memory.
-  Proposals are surfaced, not silently written — automatic capture from day one is
-  where the research says this gets muddy.
+- `session_shutdown` hook → append a **mechanical** cycle record to
+  `$PA_DATA_DIR/journal/YYYY-MM-DD.md`: time, session id, shutdown reason, prompt count,
+  model, cwd, whether memory was written, and truncated prompt excerpts. Deliberately not
+  an LLM-written narrative — a journal that costs a model call on every exit is a journal
+  that gets disabled.
+- Fact **proposals** are an `agent_settled` notification rather than an LLM extraction: if
+  a session recorded nothing to memory after three or more prompts, the user is nudged
+  toward `/remember`. Automatic capture from day one is where the research says this gets
+  muddy, so a reminder replaces it.
 - Explicit `/remember` prompt template + `memory` tool for deliberate capture.
+- `PA_MEMORY_TRACE=<path>` appends one JSON line per turn carrying the exact injected
+  memory section. This is how the frozen-snapshot property is verified, and it doubles as
+  a way to demonstrate the behaviour.
 
 ### 6.3 Reversibility (replaces permission prompts)
 

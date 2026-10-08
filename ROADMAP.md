@@ -32,15 +32,31 @@
 - Sessions with an explicit `--session-dir` are stored flat, and daily ids are
   project-scoped — resolve a session by id **and** cwd.
 
-## M1 — Memory
+## M1 — Memory — **complete**
 
-- [ ] `memory` tool: add / replace / remove over `MEMORY.md` and `USER.md`
-- [ ] `§`-delimited entries with hard character ceilings (memory ≈2200, user ≈1375)
-- [ ] Atomic writes (temp file + rename)
-- [ ] Prompt injection via `before_agent_start` with a frozen per-session snapshot
-- [ ] `/remember` prompt template
-- [ ] `session_end` hook: cycle summary to `journal/YYYY-MM-DD.md` + proposed facts
-- [ ] Verify: a fact from session A appears in session B; mid-session writes do not shift the prompt prefix
+- [x] `memory` tool: add / replace / remove / **list** over `MEMORY.md` and `USER.md`
+- [x] `§`-delimited entries with hard character ceilings (memory 2200, user 1375)
+- [x] Atomic writes (temp file, `fsync`, rename)
+- [x] Injection scanning: refuses instruction overrides, role hijacks, prompt-structure tampering, credential exfiltration, destructive commands
+- [x] Injection via `before_agent_start` prompt section, with a frozen per-session snapshot
+- [x] `/remember` prompt template
+- [x] `session_shutdown` hook: mechanical cycle record to `journal/YYYY-MM-DD.md`
+- [x] `agent_settled` nudge toward `/remember` when a substantive session recorded nothing
+- [x] `PA_MEMORY_TRACE` observability hook for the injected section
+- [x] `tests/test-memory.sh` — 11 assertions, 4 model calls, throwaway `PA_DATA_DIR`
+- [x] Verify: a fact from session A appears in session B; mid-session writes leave the injected section byte-identical
+
+### Findings during M1
+
+- **The frozen snapshot was untestable by ordinary means.** Asking the model to recall a
+  marker written earlier in the same session always succeeds — the tool-call arguments are
+  in the transcript, so the answer comes from conversation, not from memory injection. The
+  first version of the test therefore reported a false failure. `PA_MEMORY_TRACE` exists to
+  observe the injected section directly.
+- Memory is injected as a named prompt **section**, which pi renders XML-wrapped. That is
+  the cache-stable path; a whole-prompt replacement would invalidate the prefix every turn.
+- The agent qualified ADR references by project unprompted (`personal-agent ADR-0003`),
+  which is the ADR-0012 namespace rule taking effect from the system prompt alone.
 
 ## M2 — World model
 
