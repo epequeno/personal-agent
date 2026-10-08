@@ -21,6 +21,7 @@ import {
 	readFileSync,
 	statSync,
 	unlinkSync,
+	writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -158,36 +159,42 @@ function tokenise(cmd: string): string[] {
 	return out;
 }
 
+const SEPARATORS = new Set(["&&", "||", ";", "|", "&"]);
+
+/** Split into simple commands; each is [command name, ...args] with redirect tokens kept in place. */
+function segments(cmd: string): string[][] {
+	const out: string[][] = [[]];
+	for (const t of tokenise(cmd)) {
+		if (SEPARATORS.has(t)) out.push([]);
+		else out[out.length - 1].push(t);
+	}
+	// Drop wrappers and leading VAR=value so the real command is first.
+	return out
+		.map((seg) => {
+			let i = 0;
+			while (i < seg.length && (/^\w+=/.test(seg[i]) || ["sudo", "env", "command", "nohup", "time"].includes(seg[i]))) i++;
+			return seg.slice(i);
+		})
+		.filter((seg) => seg.length);
+}
+
 export function bashTargets(cmd: string, cwd: string): string[] {
-	const tokens = tokenise(cmd);
 	const found = new Set<string>();
 	const add = (t: string | undefined) => {
-		if (!t || t.startsWith("-") || t === "/dev/null" || t.startsWith("/dev/") || t.startsWith("&")) return;
+		if (!t || t.startsWith("-") || t.startsWith("/dev/") || t.startsWith("&")) return;
 		if (/[*?$`]/.test(t)) return; // unexpanded globs/variables cannot be resolved here
 		found.add(expand(t, cwd));
 	};
-	let i = 0;
-	while (i < tokens.length) {
-		const t = tokens[i];
-		if (t === ">" || t === ">>") {
-			add(tokens[i + 1]);
-			i += 2;
-			continue;
+	for (const seg of segments(cmd)) {
+		const args: string[] = [];
+		for (let i = 1; i < seg.length; i++) {
+			if (seg[i] === ">" || seg[i] === ">>") add(seg[++i]);
+			else args.push(seg[i]);
 		}
-		const name = basename(t);
+		if (seg[0] === ">" || seg[0] === ">>") add(seg[1]);
+		const name = basename(seg[0]);
 		const sedInPlace = name === "sed" || name === "perl";
-		if (MUTATORS.has(name) || sedInPlace) {
-			let j = i + 1;
-			const args: string[] = [];
-			while (j < tokens.length && !["&&", "||", ";", "|", "&", ">", ">>"].includes(tokens[j])) args.push(tokens[j++]);
-			if (!sedInPlace || args.some((a) => /^-[a-zA-Z]*i/.test(a) || a.startsWith("--in-place"))) {
-				// for sed/perl, the script argument is not a path; paths that exist are filtered by caller
-				args.forEach(add);
-			}
-			i = j;
-			continue;
-		}
-		i++;
+		if (MUTATORS.has(name) || (sedInPlace && args.some((a) => /^-[a-zA-Z]*i/.test(a) || a.startsWith("--in-place")))) args.forEach(add);
 	}
 	return [...found];
 }
@@ -268,4 +275,90 @@ export function newestSnapshotAgeDays(cfg: Config, now = new Date()): number | n
 		.filter((f) => f.endsWith(".tar.gz"))
 		.map((f) => statSync(join(dir, f)).mtimeMs);
 	return times.length ? (now.getTime() - Math.max(...times)) / 86400000 : null;
+}
+
+// --------------------------------------------------------------------------------------
+// Outbox: a plan for large or destructive changes
+//
+// Per user prompt, the extension counts distinct corpus files mutated. When a call would
+// push that count past the threshold, or deletes a directory or recurses, a plan is written
+// to outbox/ and the user is asked once. Approval covers the rest of that prompt. Without a
+// UI (pa -p) the default is to apply and log; PA_OUTBOX_POLICY=deny blocks instead.
+// --------------------------------------------------------------------------------------
+
+export const DEFAULT_OUTBOX_THRESHOLD = 5;
+
+export function outboxThreshold(env: NodeJS.ProcessEnv = process.env): number {
+	const n = Number(env.PA_OUTBOX_N);
+	return Number.isInteger(n) && n >= 0 ? n : DEFAULT_OUTBOX_THRESHOLD;
+}
+
+/** Does this bash command delete recursively? (rm -r, rm -R, --recursive, rmdir). */
+export function bashRecursiveDelete(cmd: string): boolean {
+	for (const seg of segments(cmd)) {
+		const name = basename(seg[0]);
+		if (name === "rmdir") return true;
+		if ((name === "rm" || name === "shred") && seg.slice(1).some((t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive")) return true;
+	}
+	return false;
+}
+
+export interface OutboxVerdict {
+	needed: boolean;
+	reasons: string[];
+}
+
+/**
+ * Decide whether a call needs the outbox. `seen` is the set of corpus files already
+ * mutated in this prompt; `targets` are the corpus paths this call would mutate.
+ */
+export function needsOutbox(targets: string[], seen: ReadonlySet<string>, threshold: number, recursiveDelete: boolean): OutboxVerdict {
+	const reasons: string[] = [];
+	if (recursiveDelete && targets.length) reasons.push("recursive delete");
+	const distinct = new Set([...seen, ...targets]);
+	if (distinct.size > threshold) reasons.push(`${distinct.size} distinct files in one prompt (threshold ${threshold})`);
+	return { needed: reasons.length > 0, reasons };
+}
+
+/** Unified diff of the file's current contents against `next`. */
+export function diffAgainst(abs: string, next: string): string {
+	if (!existsSync(abs)) return `(new file, ${next.length} chars)`;
+	const r = spawnSync("diff", ["-u", abs, "-"], { input: next, encoding: "utf8" });
+	return (r.stdout ?? "").slice(0, 20000) || "(no textual difference)";
+}
+
+export function setPlanOutcome(file: string, outcome: string): void {
+	writeFileSync(file, readFileSync(file, "utf8").replace("- outcome: pending", `- outcome: ${outcome}`), "utf8");
+}
+
+export function writePlan(
+	cfg: Config,
+	plan: { session: string; toolCallId: string; tool: string; reasons: string[]; targets: string[]; detail: string; outcome?: string },
+	now = new Date(),
+): string {
+	const dir = join(cfg.dataDir, "outbox");
+	mkdirSync(dir, { recursive: true });
+	const stamp = `${dayOf(now)}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${pad(now.getMilliseconds(), 3)}`;
+	const file = join(dir, `${stamp}-${plan.tool}.md`);
+	const body = [
+		`# Outbox plan ${stamp}`,
+		"",
+		`- tool: ${plan.tool}`,
+		`- session: ${plan.session}`,
+		`- why held: ${plan.reasons.join("; ")}`,
+		`- outcome: ${plan.outcome ?? "pending"}`,
+		"",
+		"## Files",
+		"",
+		...plan.targets.map((t) => `- ${t}`),
+		"",
+		"## Change",
+		"",
+		"```",
+		plan.detail.slice(0, 20000),
+		"```",
+		"",
+	].join("\n");
+	writeFileSync(file, body, "utf8");
+	return file;
 }

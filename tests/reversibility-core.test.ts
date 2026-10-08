@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, utimesSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { backup, bashTargets, configFromEnv, inCorpus, pruneSnapshots, snapshotVaults, hashFile } from "../agent/extensions/reversibility/core.ts";
+import { bashRecursiveDelete, needsOutbox, outboxThreshold, backup, bashTargets, configFromEnv, inCorpus, pruneSnapshots, snapshotVaults, hashFile } from "../agent/extensions/reversibility/core.ts";
 
 const T = process.argv[2];
 const cfg = configFromEnv();
@@ -61,6 +61,12 @@ t("bashTargets: read-only commands and sed without -i yield nothing", () => {
 	assert.deepEqual(bashTargets("sed -n '1p' f.md", cwd), []);
 	assert.deepEqual(bashTargets("echo hi > /dev/null", cwd), []);
 });
+t("bashTargets: only the command position counts", () => {
+	assert.deepEqual(bashTargets("echo rm old.txt", cwd), []);
+	assert.ok(bashTargets("sudo rm old.txt", cwd).includes(join(cwd, "old.txt")));
+	assert.ok(bashTargets("FOO=1 rm old.txt", cwd).includes(join(cwd, "old.txt")));
+	assert.ok(bashTargets("> trunc.txt", cwd).includes(join(cwd, "trunc.txt")));
+});
 t("bashTargets: globs are skipped, ~ expands", () => {
 	assert.deepEqual(bashTargets("rm *.log", cwd), []);
 	assert.ok(bashTargets("rm ~/x", cwd)[0].endsWith("/x"));
@@ -88,5 +94,25 @@ t("retention: keeps 14 daily plus one per week for 8 older weeks", () => {
 	const older = left.filter((f) => f < "Personal-2026-06-16");
 	assert.equal(recent.length, 15, "14 days back inclusive of cutoff");
 	assert.equal(older.length, 8);
+});
+t("outbox: threshold counts distinct files, not calls", () => {
+	const seen = new Set(["a", "b", "c", "d", "e"]);
+	assert.equal(needsOutbox(["a"], seen, 5, false).needed, false, "re-touching a seen file is free");
+	assert.equal(needsOutbox(["f"], seen, 5, false).needed, true);
+	assert.equal(needsOutbox(["a", "b"], new Set(), 5, false).needed, false);
+});
+t("outbox: recursive delete is held regardless of count", () => {
+	assert.ok(bashRecursiveDelete("rm -rf notes"));
+	assert.ok(bashRecursiveDelete("ls && rm -R x"));
+	assert.ok(bashRecursiveDelete("rmdir x"));
+	assert.ok(!bashRecursiveDelete("rm one.md"));
+	assert.ok(!bashRecursiveDelete("echo rm -rf"), "arguments of other commands are not deletes");
+	assert.equal(needsOutbox(["x"], new Set(), 5, true).needed, true);
+	assert.equal(needsOutbox([], new Set(), 5, true).needed, false, "nothing in the corpus, nothing to hold");
+});
+t("outbox: threshold env parsing falls back to 5", () => {
+	assert.equal(outboxThreshold({}), 5);
+	assert.equal(outboxThreshold({ PA_OUTBOX_N: "2" }), 2);
+	assert.equal(outboxThreshold({ PA_OUTBOX_N: "abc" }), 5);
 });
 console.log(`  (${n} core checks)`);

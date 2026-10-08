@@ -12,12 +12,18 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawn } from "node:child_process";
 import {
 	backup,
+	bashRecursiveDelete,
 	bashTargets,
+	diffAgainst,
 	configFromEnv,
 	expand,
 	hashFile,
 	inCorpus,
 	logMutation,
+	needsOutbox,
+	outboxThreshold,
+	setPlanOutcome,
+	writePlan,
 	newestSnapshotAgeDays,
 	pruneSnapshots,
 	snapshotVaults,
@@ -36,6 +42,9 @@ export default function reversibility(pi: ExtensionAPI) {
 	const cfg = configFromEnv();
 	const pending = new Map<string, Pending[]>();
 	let session = "?";
+	const threshold = outboxThreshold();
+	let seen = new Set<string>(); // distinct corpus files mutated in the current prompt
+	let approved = false; // the user approved a held change; covers the rest of the prompt
 
 	const safe = <T>(fn: () => T): T | undefined => {
 		try {
@@ -66,7 +75,14 @@ export default function reversibility(pi: ExtensionAPI) {
 		});
 	});
 
-	pi.on("tool_call", (event, ctx) => {
+	pi.on("input", (event) => {
+		if (event.source === "extension") return;
+		seen = new Set();
+		approved = false;
+	});
+
+	pi.on("tool_call", async (event, ctx) => {
+		let held: { plan: string; reasons: string[]; added: string[] } | undefined;
 		safe(() => {
 			const cwd = ctx.cwd;
 			const list: Pending[] = [];
@@ -82,13 +98,49 @@ export default function reversibility(pi: ExtensionAPI) {
 					if (!inCorpus(abs, cfg)) continue;
 					const before = hashFile(abs);
 					const b = backup(abs, cfg);
-					if (b.kind === "none") continue; // nothing exists to lose or to record
+					// A path that does not exist yet is a create: nothing to back up, but it still counts.
 					list.push({ tool: "bash", path: abs, before, undo: b.kind === "saved" ? b.undo : null, note: b.kind === "skipped" ? `backup skipped: ${b.reason}` : `via: ${cmd.slice(0, 160)}` });
 				}
 			}
-			if (list.length) pending.set(event.toolCallId, list);
+			if (!list.length) return;
+			const targets = list.map((p) => p.path);
+			const recursive = event.toolName === "bash" && bashRecursiveDelete(String((event.input as { command?: string }).command ?? ""));
+			const verdict = needsOutbox(targets, seen, threshold, recursive);
+			if (verdict.needed && !approved) {
+				let detail: string;
+				if (event.toolName === "write") detail = diffAgainst(targets[0], String((event.input as { content?: string }).content ?? ""));
+				else detail = JSON.stringify(event.input, null, 2);
+				const plan = writePlan(cfg, { session, toolCallId: event.toolCallId, tool: event.toolName, reasons: verdict.reasons, targets, detail });
+				held = { plan, reasons: verdict.reasons, added: targets.filter((t) => !seen.has(t)) };
+			}
+			pending.set(event.toolCallId, list);
+			for (const t of targets) seen.add(t);
 		});
-		return undefined; // never block
+
+		if (!held) return undefined;
+		const { plan, reasons, added } = held;
+		const undoCount = () => added.forEach((t) => seen.delete(t));
+		const summary = `Large or destructive change held: ${reasons.join("; ")}.\nPlan: ${plan}`;
+		if (ctx.hasUI) {
+			const ok = await ctx.ui.confirm("Apply this change?", summary);
+			safe(() => setPlanOutcome(plan, ok ? "approved by user" : "denied by user"));
+			if (ok) {
+				approved = true;
+				return undefined;
+			}
+			pending.delete(event.toolCallId);
+			undoCount();
+			return { block: true, reason: `The user declined this change. Plan saved at ${plan}.` };
+		}
+		if (process.env.PA_OUTBOX_POLICY === "deny") {
+			safe(() => setPlanOutcome(plan, "denied (headless policy)"));
+			pending.delete(event.toolCallId);
+			undoCount();
+			return { block: true, reason: `Held by outbox policy (${reasons.join("; ")}). Plan saved at ${plan}; ask the user to apply it.` };
+		}
+		safe(() => setPlanOutcome(plan, "auto-applied (no UI); undo images captured"));
+		approved = true;
+		return undefined;
 	});
 
 	pi.on("tool_result", (event) => {

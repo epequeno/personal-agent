@@ -6,7 +6,7 @@
 
 ## Resuming work
 
-**State: M0 and M1 are complete. Next is M2.**
+**State: M0, M1 and M3 are complete; M2 is nearly done (examples and final verify).**
 
 To pick this up cold, in order:
 
@@ -16,9 +16,9 @@ To pick this up cold, in order:
 4. Verify before extending:
    - `bash tests/test-launcher.sh` — 11 assertions, no model calls, free to run
    - `bash tests/test-memory.sh` — 11 assertions, 4 model calls, throwaway `PA_DATA_DIR`
-   - `bash tests/test-reversibility.sh` — 17 assertions, 2 model calls, throwaway `PA_DATA_DIR`
+   - `bash tests/test-reversibility.sh` — 26 assertions, 4 model calls, throwaway `PA_DATA_DIR`
    - `bash tests/test-atlas.sh` — 12 assertions, fixture corpora, no model calls
-5. Continue M2 (`docs/examples/`, final verify) and M3 (outbox remains).
+5. Continue M2 (`docs/examples/`, final verify); M3 is done.
 
 Two things a cold start must not assume, because both surprised us:
 
@@ -100,9 +100,9 @@ Two things a cold start must not assume, because both surprised us:
 - [x] `tool_call` hook: before-image of every corpus file written or edited → `undo/<date>/<relpath>`
 - [x] Daily `tar` snapshots of both Obsidian vaults; retention 14 daily + 8 weekly
 - [x] `journal/mutations.jsonl`: timestamp, tool, path, before-hash, after-hash, session id
-- [ ] Outbox: multi-file edits, deletions, or changes touching more than N files write a plan + diff to `outbox/` and ask once before applying
+- [x] Outbox: multi-file edits, deletions, or changes touching more than N files write a plan + diff to `outbox/` and ask once before applying
 - [x] Close the uncovered mutation path: `bash`-mediated edits (`sed -i`, `mv`, `rm`, redirection) bypass the `tool_call` hook — either add a bash guard or accept the risk explicitly (ADR-0005)
-- [ ] Verify: any corpus write is revertible from `undo/`; every mutation is in the audit trail
+- [x] Verify: any corpus write is revertible from `undo/`; every mutation is in the audit trail
 
 ## M4 — Proactive
 

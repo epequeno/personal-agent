@@ -92,6 +92,20 @@ a call. Two refinements to the decision above:
 * **`pa-undo`** (`list`, `log`, `restore`) is the reading side; restore saves the current
   contents to `<path>.pa-undo-bak` first so a restore is itself undoable.
 
+### 2026-10-08 — Outbox semantics
+
+The outbox is the one deliberate prompt, so it is narrow:
+
+* **Trigger:** more than N distinct corpus files mutated within one user prompt (default
+  `PA_OUTBOX_N=5`; re-touching a file is free), or any recursive delete (`rm -r`, `rmdir`)
+  of an existing corpus path. A single ordinary file delete is not held; it is undoable.
+* **Action:** a plan (files, reasons, diff for `write`, raw input otherwise) is written to
+  `outbox/` and the user is asked once; approval covers the rest of that prompt.
+* **No UI (`pa -p`):** the default is to apply and record `auto-applied` in the plan, since
+  an unattended brief that stalls on a prompt is worse than one that applies with undo
+  images captured. `PA_OUTBOX_POLICY=deny` blocks instead, for runs that should not mutate.
+* Creates count toward the threshold, including files created through bash redirects.
+
 ## Pros and Cons of the Options
 
 ### Reversibility layers

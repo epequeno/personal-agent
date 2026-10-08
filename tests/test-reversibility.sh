@@ -38,4 +38,17 @@ IMG2=$(find "$T/data/undo" -type f -name 'doomed.md@*' | head -1)
 check "bash rm before-image captured" '[ -n "$IMG2" ] && [ "$(cat "$IMG2")" = "precious" ]'
 check "bash rm logged" 'grep -q "doomed.md" "$T/data/journal/mutations.jsonl"'
 
+echo; echo "outbox, headless auto-apply (1 model call)"
+mkdir -p "$T/research/batch"
+PA_OUTBOX_N=1 "$REPO/bin/pa" --print --session-id m3-ob1 "Use the write tool three times to create $T/research/batch/a.md, b.md and c.md, each containing the word hi. Then reply DONE." >/dev/null 2>&1
+check "all three files written (auto-apply)" '[ -f "$T/research/batch/a.md" ] && [ -f "$T/research/batch/b.md" ] && [ -f "$T/research/batch/c.md" ]'
+check "plan written and marked auto-applied" 'grep -lq "auto-applied" "$T"/data/outbox/*.md'
+
+echo; echo "outbox, headless deny policy (1 model call)"
+mkdir -p "$T/research/deny"
+PA_OUTBOX_N=1 PA_OUTBOX_POLICY=deny "$REPO/bin/pa" --print --session-id m3-ob2 "Use the write tool to create $T/research/deny/a.md, then $T/research/deny/b.md, then $T/research/deny/c.md, each containing hi. If one is refused, do not try another way; just reply DONE." >/dev/null 2>&1
+check "first file allowed" '[ -f "$T/research/deny/a.md" ]'
+check "later files held" '[ ! -f "$T/research/deny/c.md" ]'
+check "plan marked denied" 'grep -lq "denied (headless policy)" "$T"/data/outbox/*.md'
+
 echo; echo "passed $pass(+core), failed $fail"; [ "$fail" -eq 0 ]
