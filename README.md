@@ -16,7 +16,7 @@ private half (sessions, memory, journal, undo) lives outside it and is never com
 |---|---|---|
 | M0 | Launcher, agent identity, world model, ADR convention | **complete** |
 | M1 | Durable file-based memory, session journal | **complete** |
-| M2 | Generated atlas, the daily brief | next |
+| M2 | Generated atlas, the daily brief | atlas and `/brief` done; examples remain |
 | M3 | Reversibility: undo journal, snapshots, mutation log, outbox | **complete** |
 | M4 | Scheduled briefings | planned |
 | M5 | Optional: FTS5 retrieval, extension loadout by directory | optional |
