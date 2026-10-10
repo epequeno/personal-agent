@@ -24,6 +24,13 @@ private half (sessions, memory, journal, undo) lives outside it and is never com
 [`ROADMAP.md`](ROADMAP.md) holds the detail, the findings that changed the design, and a
 "Resuming work" section. It is the file to read second.
 
+**Scope & limitations:** reads three local corpora only (`~/code`, the research vault, the
+personal vault) — never CRM data, email, calendars, or network APIs
+([ADR-0011](adr/0011-limit-v1-scope-to-the-three-local-corpora.md)). Single-user, not a product,
+not a reimplementation of OpenClaw or Hermes (see
+[Scope, and what it is not](#scope-and-what-it-is-not)). macOS-specific design reasoning
+([ADR-0008](adr/0008-keep-git-out-of-dropbox.md)); requires pi ≥ 1.1.0.
+
 ## How it works
 
 The agent is **a pi distribution, not a new harness**. pi already provides sessions,
