@@ -169,14 +169,18 @@ Structure lives in the repository; personal facts live in the data directory.
 
 Measuring the corpora rather than assuming anything about them changed the design four times:
 
-- `~/code` holds **45 directories and 33 git repos** — not the ~58 and 35 first assumed, which
-  had counted loose files and archives.
-- **Status documents barely exist.** There are 16 roadmap files across the corpora, covering
-  roughly 10 projects, and none in the research vault. So per-project status has to be
+- `~/code` holds **48 directories and 38 git repos** (re-derived 2026-10-10) — not the ~58 and 35
+  first assumed, which had counted loose files and archives.
+- **Status documents barely exist — and disagree.** Roughly 55 status-bearing documents sit
+  across the corpora: ~15 roadmap files in `~/code`, and 35 `_Index.md` files in the research
+  vault, 15 of which carry a `## Status` heading in 15 different free-text vocabularies. (An
+  earlier version of this README claimed there were none in the research vault — wrong.) Four
+  top-level documents each claimed to own "what is in flight". So per-project status has to be
   *derived* from git state and timestamps, not read from a document — which is why the atlas
   became the primary evidence source rather than a convenience layer.
 - **The agent directory is partly generated.** pi writes 44 MB of `node_modules` plus LMDB
   databases into `agent/`, so only hand-written files are committed, and each new package needs
   an ignore rule.
-- **Five repositories have no commits at all**, which makes them the highest-risk work in the
-  corpora — nothing in them can be on a remote.
+- **One repository has no commits** — `pipeline-monitor` — and that is now a deliberate,
+  accepted risk (2026-10-08) rather than the five-repository exposure this finding started as;
+  the rest were either committed and pushed or de-repo'd that day.
