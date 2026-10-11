@@ -88,7 +88,7 @@ personal-agent/
 │   ├── AGENTS.md           # the *shape* of the world (see §4)
 │   ├── extensions/         # our code
 │   ├── skills/             # our skills
-│   ├── prompts/            # /brief, /triage, /interview, /remember (+ /week, unbuilt)
+│   ├── prompts/            # /brief, /triage, /interview, /jobsweep, /remember (+ /week, unbuilt)
 │   └── themes/
 ├── docs/
 │   ├── DESIGN.md           # this file
