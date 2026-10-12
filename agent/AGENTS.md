@@ -26,9 +26,14 @@ search lane, parked-item pointers, decisions log. Its frontmatter reads
 It is authoritative for the job-search, research, and EAP tracks, and explicitly **does not**
 cover all of `~/code`. Treat it as claims to verify (ADR-0012), not as ground truth.
 
-Per-project status documents are **scarce**. Across `~/code` and the research vault there
-are 16 roadmap-ish markdown files covering roughly 10 projects — and **zero in the research
-vault**. For most projects there is simply no status document to read.
+Per-project status documents are **scarce in `~/code` and inconsistent in the research
+vault**. **Correction 2026-10-09:** an earlier version of this file claimed there were
+"**zero** in the research vault". That was wrong. A full sweep found roughly 55
+status-bearing documents across the corpora — about 15 roadmap files in `~/code`, 35
+`_Index.md` project indexes in the research vault (15 of which carry a `## Status`
+heading, in 15 different free-text vocabularies), and 4 top-level documents each claiming
+to own "what is in flight". For most `~/code` projects there is still no status document
+to read. See `agent/AGENTS.md` → Single tracker below.
 
 Consequence: derive status from git state, file timestamps, and open TODOs. A roadmap, when
 one exists, is a bonus rather than the baseline. Do not report "no status" as though the

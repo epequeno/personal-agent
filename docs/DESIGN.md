@@ -65,9 +65,9 @@ were rejected.
 
 | Corpus | Path | VCS / safety net |
 |---|---|---|
-| Research vault | `/Users/steven/Dropbox/eapsoftware-research` | Obsidian; **not a git repo**; Dropbox versions only |
-| Code | `/Users/steven/code` | 35 git repos; ~23 dirs are not repos |
-| Personal vault | `/Users/steven/Dropbox/obsidian/Personal` | Obsidian; **not a git repo**; Dropbox versions only |
+| Research vault | `~/Dropbox/eapsoftware-research` | Obsidian; **not a git repo**; Dropbox versions only |
+| Code | `~/code` | 35 git repos; ~23 dirs are not repos |
+| Personal vault | `~/Dropbox/obsidian/Personal` | Obsidian; **not a git repo**; Dropbox versions only |
 
 Two of three corpora have no local version control. This is why §6 is built around
 reversibility.

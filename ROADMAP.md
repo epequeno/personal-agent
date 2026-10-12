@@ -22,10 +22,15 @@ To pick this up cold, in order:
 
 Two things a cold start must not assume, because both surprised us:
 
-- **Status documents barely exist.** There are 16 roadmap files across `~/code` and the
-  research vault, covering roughly 10 projects, and none in the research vault. Agent
-  status is derived from git state and timestamps, not read from a status document. See
-  `docs/DESIGN.md` §5.
+- **Status documents exist in abundance and disagree with each other.** **Corrected
+  2026-10-09:** this bullet previously claimed "none in the research vault". Wrong. A sweep
+  found roughly 55 status-bearing documents across the corpora — ~15 roadmap files in
+  `~/code`, 35 `_Index.md` indexes in the vault (15 carrying a `## Status` heading, all in
+  different vocabularies), and 4 top-level documents each claiming to own what is in
+  flight. **Sequence and state now live in exactly one file:**
+  `~/Dropbox/eapsoftware-research/_Work.yaml`, rendered to `_Work.md` by `bin/pa-work`.
+  Agent status for `~/code` is still derived from git state and timestamps; per-project
+  status sections are advisory. See `docs/DESIGN.md` §5.
 - **The agent directory is partly generated.** `pi` writes `agent/npm/` (44 MB of
   `node_modules`), `agent/models-store.json`, and `agent/pi-fff/` into it. These are
   gitignored, and adding a package means adding an ignore rule. See ADR-0002 → Updates.
@@ -128,8 +133,8 @@ Two things a cold start must not assume, because both surprised us:
       the session cwd, not the `cd` target inside the command
       (`agent/extensions/reversibility/core.ts:181`, via `expand()` at :52). So
       `cd ~/code/legal-kit && patch -p1 …` records
-      `/Users/steven/code/personal-agent/docs/index.md` — a path that does not exist — instead of
-      `/Users/steven/code/legal-kit/docs/index.md`, and `before`/`after`/`undo` are all `null`.
+      `~/code/personal-agent/docs/index.md` — a path that does not exist — instead of
+      `~/code/legal-kit/docs/index.md`, and `before`/`after`/`undo` are all `null`.
       Bare `VAR=value` tokens yield junk paths too (`…/personal-agent/=`). Consequence: for any
       write outside the session cwd, the ADR-0005 guarantee silently does not hold, and M3's
       "Verify: any corpus write is revertible from `undo/`" is true only for cwd-relative

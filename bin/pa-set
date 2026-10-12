@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""pa-set — set a field on one item in _Work.yaml, safely.
+
+Exists because three separate hand-rolled `re.sub(r"^    note:.*$", "value")` calls
+dropped the `    note: ` key prefix and corrupted the source of truth. The bug is
+always the same: a replacement string is a *whole line*, not just a value.
+
+Usage:
+    pa-set <item-id> <field> <value>
+    pa-set <item-id> <field> --unset     remove the field
+    pa-set code-castle note "some new note"
+
+Refuses to write if the result does not validate. Keeps a .bak beside the file.
+Removal exists because invariants are state-dependent: `seq` is only legal on
+next/queued, so finishing a queued item means dropping the field, not blanking
+it.
+"""
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+YAML = Path.home() / "Dropbox/eapsoftware-research/_Work.yaml"
+VALIDATOR = Path.home() / "code/personal-agent/bin/pa-work"
+KNOWN_FIELDS = ["id", "title", "track", "state", "seq", "gate", "resume",
+                "note", "blocker", "evidence", "origin", "updated"]
+
+
+def main() -> int:
+    if len(sys.argv) != 4:
+        print(__doc__)
+        return 2
+    item_id, field, value = sys.argv[1], sys.argv[2], sys.argv[3]
+
+    if field not in KNOWN_FIELDS:
+        print(f"pa-set: unknown field {field!r}; known: {', '.join(KNOWN_FIELDS)}")
+        return 2
+    if "\n" in value:
+        print("pa-set: multi-line values are forbidden by the parser")
+        return 2
+
+    src = YAML.read_text(encoding="utf-8")
+    m = re.search(rf"(  - id: {re.escape(item_id)}\n)(.*?)(?=\n  - id: |\Z)", src, re.S)
+    if not m:
+        print(f"pa-set: no item with id {item_id!r}")
+        return 1
+
+    body = m.group(2)
+    remove = value == "--unset"
+    present = re.search(rf"^    {field}:.*$\n?", body, re.M)
+
+    if remove:
+        if not present:
+            print(f"pa-set: no {field!r} on {item_id!r} to remove")
+            return 1
+        body = re.sub(rf"^    {field}:.*$\n?", "", body, count=1, flags=re.M)
+    else:
+        # the replacement is a WHOLE LINE, key included — the mistake this script prevents
+        new_line = f"    {field}: {value}"
+        if present:
+            body = re.sub(rf"^    {field}:.*$", new_line, body, count=1, flags=re.M)
+        else:
+            body = body.rstrip("\n") + "\n" + new_line + "\n"
+
+    out = src[:m.start(2)] + body + src[m.end(2):]
+    backup = YAML.with_suffix(".yaml.bak")
+    shutil.copy2(YAML, backup)
+    YAML.write_text(out, encoding="utf-8")
+
+    r = subprocess.run([str(VALIDATOR), "validate"], capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip())
+    if r.returncode != 0:
+        shutil.copy2(backup, YAML)
+        print("pa-set: INVALID — reverted from backup")
+        return 1
+    print(f"pa-set: {item_id}.{field} {'unset' if remove else 'set'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

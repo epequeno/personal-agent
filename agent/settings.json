@@ -4,8 +4,18 @@
   "defaultThinkingLevel": "medium",
   "theme": "dark",
   "quietStartup": "header",
-  "defaultTools": ["read", "grep", "find", "ls", "bash", "edit", "write"],
-  "packages": ["npm:pi-fff", "npm:pi-markdown-preview"],
+  "defaultTools": [
+    "read",
+    "grep",
+    "find",
+    "ls",
+    "bash",
+    "edit",
+    "write"
+  ],
+  "packages": [
+    "npm:pi-fff"
+  ],
   "extensions": [
     "~/.pi/agent/extensions/roadmap.ts",
     "~/.pi/agent/extensions/subagent",
@@ -13,5 +23,8 @@
     "~/.pi/agent/extensions/openrouter-service-tier.ts",
     "~/.pi/agent/extensions/proceed-shortcut.ts"
   ],
-  "skills": ["~/.agents/skills"]
+  "skills": [
+    "~/.agents/skills"
+  ],
+  "lastChangelogVersion": "1.1.0"
 }

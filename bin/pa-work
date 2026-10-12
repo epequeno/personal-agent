@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""pa-work — validate and render the single work tracker (_Work.yaml -> _Work.md).
+
+Stdlib only, matching bin/pa-atlas. pyyaml is not available in this environment, so
+this parses a deliberately strict YAML SUBSET:
+
+  * two-space indentation, no tabs, no anchors, no aliases, no multi-line scalars
+  * full-line comments only; blank lines ignored
+  * flow lists limited to [a, b, c] of plain scalars
+  * no block scalars (| or >)
+
+Anything outside the subset is a hard error, never a silent misparse. As a second
+guard, load() asserts that the number of parsed items equals the number of raw
+"  - id:" lines in the file, so a parser that drops items fails loudly.
+
+Invariants (design: outbox/2026-10-09-work-tracking/PLAN.md):
+  1. at most one `inflight`   — zero is valid and means nothing is being built
+  2. at most one `next`
+  3. `parked` requires `resume`
+  4. `inflight` / `next` / `queued` require `gate`
+  5. `seq` is unique within a track and set only on `next` / `queued`
+  6. every item has `evidence`
+  7. `state` comes from the enum
+  8. every exclusion states a reason
+
+Usage:
+  pa-work validate [--file PATH]
+  pa-work render   [--file PATH] [--out PATH]
+  pa-work check    [--file PATH] [--out PATH]   # validate then render (default)
+"""
+import argparse
+import os
+import re
+import sys
+from datetime import date
+from pathlib import Path
+
+DEFAULT_FILE = Path(
+    os.environ.get(
+        "PA_WORK_FILE",
+        Path.home() / "Dropbox" / "eapsoftware-research" / "_Work.yaml",
+    )
+)
+
+STATES = {
+    "inflight",
+    "next",
+    "queued",
+    "parked",
+    "considering",
+    "unaudited",
+    "done",
+    "archived",
+}
+TRACKS = {"build", "search", "eap", "research", "study", "code", "admin"}
+ACTIVE_STATES = {"inflight", "next", "queued"}
+
+# Render order. Deliberately not alphabetical: this is the order a human reads.
+TRACK_ORDER = ["build", "search", "eap", "research", "study", "code", "admin"]
+STATE_ORDER = ["inflight", "next", "queued", "parked", "considering", "unaudited"]
+STATE_LABEL = {
+    "inflight": "IN FLIGHT",
+    "next": "NEXT",
+    "queued": "Queued",
+    "parked": "Parked",
+    "considering": "Considering",
+    "unaudited": "Unaudited",
+}
+
+
+class ParseError(Exception):
+    pass
+
+
+def _scalar(text):
+    text = text.strip()
+    if text.startswith("[") and text.endswith("]"):
+        inner = text[1:-1].strip()
+        if not inner:
+            return []
+        return [p.strip().strip("'\"") for p in inner.split(",")]
+    if text in ("", "null", "~"):
+        return None
+    if text in ("true", "false"):
+        return text == "true"
+    if re.fullmatch(r"-?\d+", text):
+        return int(text)
+    return text.strip("'\"")
+
+
+def load(path):
+    """Parse the strict YAML subset. Raises ParseError on anything unexpected."""
+    raw = Path(path).read_text(encoding="utf-8")
+    lines = raw.splitlines()
+
+    doc = {}
+    stack = [(-1, doc)]  # (indent, container)
+    pending_key = None  # key awaiting an indented block
+    current = None  # current item dict, when inside a list of maps
+    in_items = False
+
+    for lineno, line in enumerate(lines, 1):
+        if "\t" in line:
+            raise ParseError(f"line {lineno}: tab character (use two spaces)")
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        indent = len(line) - len(line.lstrip(" "))
+        if indent % 2:
+            raise ParseError(f"line {lineno}: indent must be a multiple of 2")
+        if line[:indent].strip():
+            raise ParseError(f"line {lineno}: unexpected leading characters")
+
+        while len(stack) > 1 and indent <= stack[-1][0]:
+            stack.pop()
+        container = stack[-1][1]
+
+        # ---- list item -------------------------------------------------
+        if stripped.startswith("- "):
+            if not isinstance(container, list):
+                raise ParseError(f"line {lineno}: list item outside a list")
+            body = stripped[2:]
+            if ":" not in body:
+                raise ParseError(f"line {lineno}: list item must be a mapping")
+            key, _, rest = body.partition(":")
+            item = {}
+            container.append(item)
+            stack.append((indent, item))
+            current = item
+            if rest.strip():
+                item[key.strip()] = _scalar(rest)
+            else:
+                item[key.strip()] = None
+                pending_key = key.strip()
+            continue
+
+        # ---- mapping entry ---------------------------------------------
+        if ":" not in stripped:
+            raise ParseError(f"line {lineno}: expected 'key: value'")
+        key, _, rest = stripped.partition(":")
+        key = key.strip()
+        if not isinstance(container, dict):
+            raise ParseError(f"line {lineno}: mapping entry inside a list item")
+        if rest.strip():
+            container[key] = _scalar(rest)
+            pending_key = None
+        else:
+            # look ahead: list or nested map?
+            child = None
+            for nxt in lines[lineno:]:
+                if not nxt.strip() or nxt.strip().startswith("#"):
+                    continue
+                nxt_indent = len(nxt) - len(nxt.lstrip(" "))
+                if nxt_indent <= indent:
+                    break
+                child = [] if nxt.strip().startswith("- ") else {}
+                break
+            if child is None:
+                container[key] = None
+            else:
+                container[key] = child
+                stack.append((indent, child))
+            pending_key = key
+            if key == "items":
+                in_items = True
+            continue
+        # unreachable
+
+    if pending_key:
+        pass  # trailing key with no value is allowed
+
+    items = doc.get("items")
+    if not isinstance(items, list):
+        raise ParseError("no `items:` list found")
+
+    # Guard against a parser that silently drops rows. Counts list-of-map items
+    # across both `items:` and `excluded:`, since both use `- id:` entries.
+    raw_count = sum(1 for ln in lines if re.match(r"^\s+- id:\s", ln))
+    parsed_count = len(items) + len(doc.get("excluded") or [])
+    if raw_count != parsed_count:
+        raise ParseError(
+            f"parsed {parsed_count} entries but found {raw_count} '- id:' lines "
+            "— parser drift, refusing to continue"
+        )
+    return doc
+
+
+def validate(doc):
+    errs = []
+    items = doc.get("items", [])
+    seen_ids = {}
+
+    for i, it in enumerate(items, 1):
+        where = f"item {i} ({it.get('id', '?')})"
+        iid = it.get("id")
+        if not iid:
+            errs.append(f"{where}: missing `id`")
+            continue
+        if iid in seen_ids:
+            errs.append(f"{where}: duplicate id")
+        seen_ids[iid] = it
+
+        state = it.get("state")
+        if state not in STATES:
+            errs.append(f"{where}: unknown state {state!r}")
+            continue
+        if not it.get("track"):
+            errs.append(f"{where}: missing `track`")
+        elif it["track"] not in TRACKS:
+            errs.append(f"{where}: unknown track {it['track']!r}")
+        if not it.get("evidence"):
+            errs.append(f"{where}: missing `evidence`")
+
+        if state in ACTIVE_STATES and not it.get("gate"):
+            errs.append(f"{where}: state {state} requires `gate`")
+        if state == "parked" and not it.get("resume"):
+            errs.append(f"{where}: state parked requires `resume`")
+        if it.get("seq") is not None and state not in ("next", "queued"):
+            errs.append(f"{where}: `seq` only allowed on next/queued")
+        if it.get("seq") is not None and not isinstance(it["seq"], int):
+            errs.append(f"{where}: `seq` must be an integer")
+
+    # invariants 1, 2 and 5 are global
+    inflight = [i["id"] for i in items if i.get("state") == "inflight"]
+    if len(inflight) > 1:
+        errs.append(f"more than one inflight: {', '.join(inflight)}")
+    nxt = [i["id"] for i in items if i.get("state") == "next"]
+    if len(nxt) > 1:
+        errs.append(f"more than one next: {', '.join(nxt)}")
+
+    by_track_seq = {}
+    for it in items:
+        if it.get("seq") is None:
+            continue
+        key = (it.get("track"), it["seq"])
+        if key in by_track_seq:
+            errs.append(
+                f"duplicate seq {it['seq']} in track {it.get('track')}: "
+                f"{by_track_seq[key]} and {it['id']}"
+            )
+        by_track_seq[key] = it["id"]
+
+    for j, ex in enumerate(doc.get("excluded", []) or [], 1):
+        if not ex.get("reason"):
+            errs.append(f"exclusion {j} ({ex.get('id', '?')}): missing `reason`")
+
+    return errs
+
+
+def render(doc):
+    meta = doc.get("meta", {}) or {}
+    items = doc.get("items", []) or []
+    out = []
+    w = out.append
+
+    w("# Work — generated view")
+    w("")
+    w("> **GENERATED from `_Work.yaml` — do not edit this file.**")
+    w("> Run `bin/pa-work` to regenerate. Edit the YAML instead.")
+    w("")
+    w(f"- **Updated:** {meta.get('updated', 'unknown')}")
+    w(f"- **Authority:** `_Work.yaml`")
+    w(f"- **Items:** {len(items)} total")
+    w("")
+
+    inflight = [i for i in items if i.get("state") == "inflight"]
+    nxt = [i for i in items if i.get("state") == "next"]
+    if inflight:
+        w(f"- **In flight:** {inflight[0].get('title')}")
+    else:
+        w("- **In flight:** *(nothing)* — the stall signal")
+    w(f"- **Next:** {nxt[0].get('title') if nxt else '*(unset)*'}")
+    w("")
+
+    for track in TRACK_ORDER:
+        rows = [i for i in items if i.get("track") == track]
+        if not rows:
+            continue
+        active = [r for r in rows if r.get("state") in STATE_ORDER]
+        if not active:
+            w(f"## {track}")
+            w("")
+            w("*(nothing active)*")
+            w("")
+            continue
+        w(f"## {track}")
+        w("")
+        for state in STATE_ORDER:
+            group = [r for r in active if r.get("state") == state]
+            if not group:
+                continue
+            group.sort(key=lambda r: (r.get("seq") or 999, r.get("id") or ""))
+            w(f"### {STATE_LABEL[state]}")
+            w("")
+            for it in group:
+                seq = f"{it['seq']}. " if it.get("seq") is not None else ""
+                lines = [f"- {seq}**{it.get('title', it.get('id'))}**"]
+                if state in ACTIVE_STATES and it.get("gate"):
+                    lines.append(f"  - gate: {it['gate']}")
+                if state == "parked" and it.get("resume"):
+                    lines.append(f"  - resume: {it['resume']}")
+                if it.get("blocker"):
+                    lines.append(f"  - blocker: {it['blocker']}")
+                if it.get("note"):
+                    lines.append(f"  - note: {it['note']}")
+                lines.append(f"  - evidence: `{it.get('evidence')}`")
+                w("\n".join(lines))
+            w("")
+
+    excluded = doc.get("excluded") or []
+    if excluded:
+        w("## Outside tracking")
+        w("")
+        for ex in excluded:
+            w(f"- **{ex.get('title', ex.get('id'))}** — {ex.get('reason')}")
+        w("")
+
+    done = [i for i in items if i.get("state") == "done"]
+    arch = [i for i in items if i.get("state") == "archived"]
+    w("---")
+    w("")
+    summary = ", ".join(
+        f"{sum(1 for i in items if i.get('state') == s)} {s}"
+        for s in ["done", "archived", "considering", "unaudited"]
+    )
+    w(f"Not shown above: {summary}.")
+    if done:
+        w("")
+        w(f"Done: {', '.join(i.get('id', '?') for i in done)}")
+    if arch:
+        w("")
+        w(f"Archived: {', '.join(i.get('id', '?') for i in arch)}")
+    w("")
+    return "\n".join(out)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="pa-work", description=__doc__.split("\n")[0])
+    ap.add_argument(
+        "cmd", nargs="?", default="check", choices=["validate", "render", "check"]
+    )
+    ap.add_argument("--file", default=str(DEFAULT_FILE))
+    ap.add_argument("--out", default=None)
+    args = ap.parse_args(argv)
+
+    path = Path(args.file)
+    if not path.exists():
+        print(f"pa-work: no tracker at {path}", file=sys.stderr)
+        return 2
+
+    try:
+        doc = load(path)
+    except ParseError as e:
+        print(f"pa-work: parse error: {e}", file=sys.stderr)
+        return 2
+
+    errs = validate(doc)
+    if errs:
+        for e in errs:
+            print(f"pa-work: INVARIANT: {e}", file=sys.stderr)
+        print(f"pa-work: {len(errs)} violation(s); refusing to render", file=sys.stderr)
+        return 1
+
+    if args.cmd == "validate":
+        print(f"pa-work: {path} OK — {len(doc.get('items', []))} items")
+        return 0
+
+    out_path = Path(args.out) if args.out else path.with_suffix(".md")
+    out_path.write_text(render(doc), encoding="utf-8")
+    print(f"pa-work: rendered {out_path} ({len(doc.get('items', []))} items)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

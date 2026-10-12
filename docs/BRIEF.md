@@ -13,7 +13,7 @@ goal:
 	create a local, personal agent to help with on-going or persitent tasks and activities
 
 design:
-	This should mostly be a customized instance of the pi coding agent whose configurations and associated code and data are stored here: /Users/steven/code/personal-agent
+	This should mostly be a customized instance of the pi coding agent whose configurations and associated code and data are stored here: ~/code/personal-agent
 
 requirements
 	- data is stored locally (avoid cloud/remote storage)
@@ -27,6 +27,6 @@ notes:
 - main directories in consideration
 	These directories already contain the files, plans, code, etc for existing projects. The primary use case for the agent is to ask like a project manager / personal assistant
 
-	- /Users/steven/Dropbox/eapsoftware-research
-	- /Users/steven/code
-	- /Users/steven/Dropbox/obsidian/Personal
+	- ~/Dropbox/eapsoftware-research
+	- ~/code
+	- ~/Dropbox/obsidian/Personal
