@@ -1,7 +1,8 @@
 # 0015 — A project's open items are not its dependencies'
 
-- **Status:** proposed (2026-10-11)
-- **Date:** 2026-10-11
+* Status: accepted
+* Deciders: Steven
+* Date: 2026-10-11
 
 ## Context
 
