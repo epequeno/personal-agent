@@ -19,6 +19,15 @@ echo "// TODO: fix me" > "$C/plain/a.js"
 echo "note" > "$R/topic/n.md"; echo "n" > "$P/notes/n.md"
 echo "mentions pushed only" > "$R/_Home.md"
 
+# a project that vendors a dependency it ignores: the dependency's checklist is not its own
+mkdir -p "$C/vendored/dbt_packages/pkg/.github"
+git -C "$C/vendored" init -q
+printf 'dbt_packages/\n' > "$C/vendored/.gitignore"
+echo "# TODO: our own work" > "$C/vendored/a.py"
+printf -- "- [ ] postgres\n- [ ] redshift\n" > "$C/vendored/dbt_packages/pkg/.github/bug_report.md"
+git -C "$C/vendored" add -A
+git -C "$C/vendored" -c user.name=t -c user.email=t@t commit -qm x
+
 export PA_CODE_DIR="$C" PA_RESEARCH_DIR="$R" PA_PERSONAL_DIR="$P" PA_HOME_NOTE="$R/_Home.md"
 OUT="$T/atlas"
 "$HERE/bin/pa-atlas" --out "$OUT" >/dev/null
@@ -34,6 +43,9 @@ check "roadmap next item on card"          'grep -q "ship it" "$OUT/code--pushed
 check "checked item not listed"            '! grep -q "done" "$OUT/code--pushed.md"'
 check "archive dir ignored"                '! grep -q "vendor" "$OUT/code--pushed.md"'
 check "TODO found in plain source"         'grep -q "fix me" "$OUT/code--plain.md"'
+check "gitignored vendored files are not open items" '! grep -q "postgres" "$OUT/code--vendored.md"'
+check "the project's own TODO still counts"    'grep -q "our own work" "$OUT/code--vendored.md"'
+check "ignored files are not counted in size"  'grep -q "size: 2 files" "$OUT/code--vendored.md"'
 check "not-in-home flag"                   'grep "\[plain\]" "$IDX" | grep -q "not-in-home"'
 check "rerun is stable"                    'N=$(date +%s); "$HERE/bin/pa-atlas" --out "$OUT" --now $N >/dev/null; cp "$IDX" "$T/a"; "$HERE/bin/pa-atlas" --out "$OUT" --now $N >/dev/null; cmp -s "$IDX" "$T/a"'
 echo; echo "passed $pass, failed $fail"; [ "$fail" -eq 0 ]

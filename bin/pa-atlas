@@ -46,13 +46,45 @@ def slugify(s):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-") or "unnamed"
 
 
+def ignored_paths(project: Path) -> set[Path]:
+    """Paths git ignores inside this project, as absolute paths.
+
+    A project's open items are not its dependencies'. `dbt_packages/`, a data directory and a
+    generated `cdk.out/` are all things the project itself has declared it does not track, and
+    counting a vendored library's pull-request template as the owner's checklist inflates every
+    card that vendors a package (`mlb-statcast-dbt` reported 33 such items, none of them its own).
+
+    Empty for anything that is not a repository, where SKIP_DIRS does the work instead.
+    """
+    if not (project / ".git").exists():
+        return set()
+    try:
+        r = subprocess.run(["git", "-C", str(project), "ls-files", "--others", "--ignored",
+                            "--exclude-standard", "--directory", "-z"],
+                           capture_output=True, text=True, timeout=30)
+    except Exception:
+        return set()
+    if r.returncode != 0:
+        return set()
+    out: set[Path] = set()
+    for name in r.stdout.split("\0"):
+        name = name.strip().rstrip("/")
+        if name:
+            out.add((project / name).resolve())
+    return out
+
+
 def walk(project):
-    """Yield (path, stat) for files, skipping noise; honours MAX_FILES."""
+    """Yield (path, stat) for files, skipping noise and whatever the project itself ignores."""
+    ignored = ignored_paths(project)
     n = 0
     for root, dirs, files in os.walk(project):
-        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        dirs[:] = sorted(d for d in dirs
+                         if d not in SKIP_DIRS and (Path(root) / d).resolve() not in ignored)
         for f in sorted(files):
             p = Path(root) / f
+            if p.resolve() in ignored:
+                continue
             try:
                 st = p.lstat()
             except OSError:

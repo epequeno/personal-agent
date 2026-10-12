@@ -53,6 +53,7 @@ Convention follows [architecture-decision-record](https://github.com/architectur
 | [0012](./0012-treat-the-priorities-hub-as-a-verified-claim.md) | Treat the priorities hub as a verified claim | 2026-10-08 |
 | [0013](./0013-defer-backup-of-the-data-directory.md) | Defer backup of the data directory | 2026-10-08 |
 | [0014](./0014-let-the-agent-draft-adrs.md) | Let the agent draft ADRs | 2026-10-08 |
+| [0015](./0015-open-items-are-not-dependencies.md) | A project's open items are not its dependencies' | 2026-10-11 |
 
 ### Superseded, deprecated, or rejected
 
@@ -75,3 +76,4 @@ Settled items are recorded rather than removed:
 | Backup strategy | Deferred, local-only, with a revisit trigger | [0013](./0013-defer-backup-of-the-data-directory.md) |
 | ADR authoring by the agent | Drafts only, status `proposed` | [0014](./0014-let-the-agent-draft-adrs.md) |
 | EAP business state in v1 scope | Excluded; reached via documents only | [0011](./0011-limit-v1-scope-to-the-three-local-corpora.md) |
+| Atlas open items | Pruned to what the project itself tracks | [0015](./0015-open-items-are-not-dependencies.md) |
